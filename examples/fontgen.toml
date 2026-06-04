@@ -1,0 +1,16 @@
+[font]
+path = "../fonts/NotoSansJP-Regular.ttf"
+
+[input]
+chars = ["chars.txt"]
+preserve_space = true
+
+[output]
+language = "c"
+name = "sample_font"
+directory = "."
+
+[generation]
+sizes = [16, 24]
+alpha_bits = 4
+missing_glyphs = "error"

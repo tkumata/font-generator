@@ -1,0 +1,6 @@
+ABCDEFGHIJKLMNOPQRSTUVWXYZ
+abcdefghijklmnopqrstuvwxyz
+0123456789
+ .,:;!?+-*/=()[]{}_%℃
+あいうえおかきくけこ
+温度湿度気圧設定空白削除
