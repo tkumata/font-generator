@@ -31,11 +31,16 @@ preserve_space = true
 language = "c"
 name = "app_font"
 directory = "."
+format = "c-fixed"
 
 [generation]
-sizes = [16, 24]
+sizes = [26]
 alpha_bits = 4
 missing_glyphs = "error"
+
+[fixed_cell]
+width = 26
+height = 26
 ```
 
 ## Character Files
@@ -108,6 +113,8 @@ Phase 4 stores the packed alpha bytes in memory. Phase 5 writes those bytes to C
 
 ## Glyph Metadata
 
+Metrics-based output records retain glyph metrics for advanced consumers.
+
 Each glyph entry should include:
 
 - Unicode display unit or lookup key.
@@ -132,12 +139,61 @@ Phase 4 model field names:
 
 `fontdue` provides `xmin` and `ymin`; Phase 4 maps those to `bearing_x` and `bearing_y`.
 
+## C Fixed Bitmap Output
+
+The preferred C output targets microcontroller firmware that does not have a font renderer.
+
+Configuration:
+
+- `output.format = "c-fixed"` selects fixed-cell C output.
+- `fixed_cell.width` sets the output cell width in pixels.
+- `fixed_cell.height` sets the output cell height in pixels.
+- `generation.sizes` must contain exactly one size for fixed-cell C output in Phase 8.
+
+Generated C fixed output contains:
+
+- A header guard.
+- `#include <stdint.h>`.
+- `{PREFIX}_WIDTH`.
+- `{PREFIX}_HEIGHT`.
+- `{PREFIX}_BPP`.
+- `{PREFIX}_BYTES_PER_CHAR`.
+- `{PREFIX}_CHAR_COUNT`.
+- A UTF-8 character mapping string.
+- A two-dimensional bitmap array with shape `[char_count][bytes_per_char]`.
+
+For 4-bit alpha:
+
+- `bytes_per_char = (width * height + 1) / 2`.
+- High nibble stores the first pixel.
+- Low nibble stores the second pixel.
+- Odd pixel counts pad the final low nibble with 0.
+
+Runtime contract:
+
+- Firmware finds the display-unit index in the mapping.
+- Firmware reads `bitmap_data[index]`.
+- Firmware expands each nibble to alpha.
+- Firmware draws the fixed cell at the caller-provided x and y position.
+- Firmware does not read glyph metrics, advance values, bearings, or bitmap offsets.
+
+Glyph placement contract:
+
+- Generation places each rasterized glyph into the configured fixed cell.
+- The fixed cell origin is the only runtime placement origin.
+- If a rasterized glyph does not fit the cell, generation must report a clear error unless a later explicit clipping option is added.
+- Phase 8 does not add kerning, baseline layout, proportional text layout, or runtime shaping.
+
 ## Output Files
 
-When `language = "c"`:
+When `language = "c"` and the metrics format is selected:
 
 - `app_font.h`
 - `app_font.c`
+
+When `language = "c"` and `output.format = "c-fixed"`:
+
+- `app_font.h`
 
 When `language = "rust"`:
 
@@ -161,6 +217,8 @@ Phase 5 Rust output includes:
 - A top-level `FONT_SIZES` slice.
 
 The generated lookup data is intentionally table-based. Firmware can scan `glyphs` by `key` until Phase 6 examples define integration-specific helpers.
+
+C fixed output replaces this recommendation for typical C firmware. New C firmware should prefer the fixed-cell format because it does not assume a font renderer.
 
 ## Examples
 

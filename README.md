@@ -19,6 +19,8 @@ Embedded display projects often need only a small subset of Japanese text, symbo
 
 Generated glyph bitmaps use 4-bit grayscale alpha for pseudo-antialiased rendering.
 
+The preferred C direction is fixed-cell bitmap output for firmware that does not have a font renderer. The generator should prepare data that a microcontroller can draw with direct character lookup, fixed-size bitmap records, and a small nibble-unpacking loop.
+
 ## Usage
 
 ```sh
@@ -40,11 +42,16 @@ preserve_space = true
 language = "c"
 name = "app_font"
 directory = "."
+format = "c-fixed"
 
 [generation]
-sizes = [16, 24]
+sizes = [26]
 alpha_bits = 4
 missing_glyphs = "error"
+
+[fixed_cell]
+width = 26
+height = 26
 ```
 
 Useful overrides:
@@ -91,16 +98,22 @@ Rasterization behavior:
 
 ## Output Generation
 
-When `language = "c"`, the tool writes:
+When `language = "c"` and metrics output is selected, the tool writes:
 
 - `{output_name}.h`
 - `{output_name}.c`
+
+When `output.format = "c-fixed"`, C output is a fixed-cell header for rendererless firmware. Metrics-based C output remains available with `output.format = "c-metrics"` or by omitting `output.format`.
+
+Fixed-cell C output writes:
+
+- `{output_name}.h`
 
 When `language = "rust"`, the tool writes:
 
 - `{output_name}.rs`
 
-The generated files contain size-specific packed bitmap byte arrays, glyph metadata arrays, and a top-level size table. The command prints every written path.
+Metrics output contains size-specific packed bitmap byte arrays, glyph metadata arrays, and a top-level size table. Fixed-cell C output contains constants, a UTF-8 mapping string, and fixed-size bitmap records. The command prints every written path.
 
 ## Examples
 
@@ -130,6 +143,8 @@ Integration notes:
 
 MVP Phase 7 documentation polish is implemented. The tool can load configuration, apply CLI overrides, validate required files and settings, collect Unicode grapheme clusters from character files, remove duplicates in stable order, load a configured font, rasterize scalar glyphs for configured sizes, print an in-memory font model summary, write generated output files, and provide sample integration materials.
 
+Phase 8 corrected the C output shape for typical microcontroller work by adding fixed-cell bitmap data that does not require a font renderer.
+
 Development phases:
 
 - Phase 1: Documentation baseline.
@@ -139,8 +154,9 @@ Development phases:
 - Phase 5: C and Rust output generation.
 - Phase 6: Verification and examples.
 - Phase 7: Final documentation and operational polish.
+- Phase 8: Rendererless C fixed bitmap output.
 
-The planned MVP phases are complete after Phase 7 approval.
+The planned MVP phases are complete after Phase 7 approval. Phase 8 is a post-MVP correction that makes C output more directly useful in firmware.
 
 ## Development
 
@@ -179,4 +195,5 @@ The project currently uses a normal Cargo binary crate. No VS Code workspace-spe
 - `docs/ADR/202606041204.md`
 - `docs/ADR/202606041411.md`
 - `docs/ADR/202606041418.md`
+- `docs/ADR/202606042113.md`
 - `docs/TASK/current-task.md`

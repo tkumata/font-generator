@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use font_generator::config::{GenerationSettings, MissingGlyphPolicy, OutputLanguage};
+use font_generator::config::{
+    FixedCellSettings, GenerationSettings, MissingGlyphPolicy, OutputFormat, OutputLanguage,
+};
 use font_generator::model::{GeneratedFont, GeneratedFontSize, Glyph};
 use font_generator::output::write_output;
 
@@ -33,11 +35,33 @@ fn settings_for(language: OutputLanguage, output_directory: PathBuf) -> Generati
         character_files: vec![PathBuf::from("unused.txt")],
         preserve_space: false,
         language,
+        output_format: None,
         output_name: "sample_font".to_string(),
         output_directory,
         sizes: vec![16],
         alpha_bits: 4,
         missing_glyphs: MissingGlyphPolicy::Error,
+        fixed_cell: None,
+    }
+}
+
+fn fixed_settings(output_directory: PathBuf) -> GenerationSettings {
+    GenerationSettings {
+        config_path: None,
+        font_path: PathBuf::from("unused.ttf"),
+        character_files: vec![PathBuf::from("unused.txt")],
+        preserve_space: false,
+        language: OutputLanguage::C,
+        output_format: Some(OutputFormat::CFixed),
+        output_name: "sample_font".to_string(),
+        output_directory,
+        sizes: vec![16],
+        alpha_bits: 4,
+        missing_glyphs: MissingGlyphPolicy::Error,
+        fixed_cell: Some(FixedCellSettings {
+            width: 4,
+            height: 4,
+        }),
     }
 }
 
@@ -79,6 +103,34 @@ fn writes_deterministic_c_output_files() -> Result<(), Box<dyn std::error::Error
     ensure_contains(
         &root.join("sample_font.c"),
         "{ \"A\", 0u, 2u, 2u, 2u, 3, 0, -1 }",
+    )?;
+    Ok(())
+}
+
+#[test]
+fn writes_deterministic_fixed_c_output_file() -> Result<(), Box<dyn std::error::Error>> {
+    let root = temp_dir("fixed-c")?;
+    let settings = fixed_settings(root.clone());
+
+    let paths = write_output(&settings, &sample_font())?;
+
+    if paths.len() != 1 {
+        return Err(std::io::Error::other(format!("unexpected paths: {paths:?}")).into());
+    }
+    ensure_contains(&root.join("sample_font.h"), "#define SAMPLE_FONT_WIDTH 4")?;
+    ensure_contains(&root.join("sample_font.h"), "#define SAMPLE_FONT_HEIGHT 4")?;
+    ensure_contains(
+        &root.join("sample_font.h"),
+        "#define SAMPLE_FONT_BYTES_PER_CHAR 8",
+    )?;
+    ensure_contains(
+        &root.join("sample_font.h"),
+        "static const char *sample_font_chars",
+    )?;
+    ensure_contains(&root.join("sample_font.h"), "\"A\";")?;
+    ensure_contains(
+        &root.join("sample_font.h"),
+        "static const uint8_t sample_font_data[1][8]",
     )?;
     Ok(())
 }

@@ -47,7 +47,7 @@ Development environment:
 - The tool must read TTF and OTF fonts.
 - The tool must generate bitmap glyphs for all requested font sizes.
 - The generated glyph bitmap must use 4-bit grayscale alpha.
-- The generated data must include enough metrics for firmware rendering.
+- The preferred C output must not require a font renderer or text layout engine on the microcontroller.
 - The generated files must be written to the directory where the program is executed unless an explicit output directory is provided.
 
 Phase 4 requirement detail:
@@ -64,7 +64,20 @@ Phase 4 requirement detail:
 - The output must be deterministic for the same input and config.
 - The output must be suitable for embedded projects with constrained storage.
 - The command must report which output files were written.
-- The C and Rust outputs must expose packed bitmap bytes and glyph metadata without requiring heap allocation.
+- Generated output must not require heap allocation.
+- C fixed bitmap output must expose a direct character mapping and fixed-size bitmap records.
+- C fixed bitmap output must be usable with only display-unit lookup, index selection, nibble unpacking, and target display drawing.
+- Metrics-based output is allowed only as a separate advanced format and must not be the default microcontroller recommendation.
+
+Phase 8 requirement detail:
+
+- The C fixed output must support a configured cell width and cell height.
+- The C fixed output must generate one bitmap record per renderable display unit.
+- The C fixed output must preserve input character order.
+- The C fixed output must define bytes per character as `(cell_width * cell_height + 1) / 2` for 4-bit alpha data.
+- The C fixed output must place every glyph into the fixed cell during generation.
+- The C fixed output must not require `advance_x`, `bearing_x`, `bearing_y`, glyph offsets, or variable bitmap lengths at firmware runtime.
+- The generated mapping string and bitmap array must remain index-aligned.
 
 ### Verification And Examples
 
@@ -98,10 +111,11 @@ Phase approval points:
 - Phase 5 approval: C and Rust output accepted.
 - Phase 6 approval: verification and examples accepted.
 - Phase 7 approval: final documentation accepted.
+- Phase 8 approval: rendererless C fixed bitmap output accepted.
 
 ## Out Of Scope For MVP
 
-- Rendering text on a real microcontroller display.
+- Emitting a full text renderer for a real microcontroller display.
 - Generating display driver code.
 - Supporting every Unicode code point.
 - Guaranteeing emoji rendering when the selected font lacks color or emoji glyphs.

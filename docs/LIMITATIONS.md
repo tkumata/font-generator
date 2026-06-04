@@ -18,6 +18,12 @@ These are reported as unsupported clusters or missing glyphs.
 
 The rasterizer currently uses the default face in a font collection. Some `.ttc` files may contain multiple faces, and the default face may not include every expected glyph.
 
+## C Output Shape
+
+The compatibility C output is metrics-based. It assumes the firmware can interpret glyph dimensions, bitmap offsets, advance, and bearings.
+
+That assumption is too strong for many microcontroller projects. Use `output.format = "c-fixed"` for fixed-cell C bitmap output that can be drawn without a font renderer.
+
 Use a font file or collection whose default face includes the requested characters.
 
 ## Generated Lookup Helpers

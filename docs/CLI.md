@@ -54,6 +54,27 @@ Overrides `[output].directory`. The directory must already exist.
 
 Overrides `[input].preserve_space`.
 
+## Config-Only Output Settings
+
+`[output].format`
+
+Selects the C output format.
+
+Supported values:
+
+- `c-fixed`: fixed-cell C bitmap header for firmware without a font renderer.
+- `c-metrics`: metrics-based C header/source output for advanced firmware that owns renderer logic.
+
+When omitted, compatibility C output uses the metrics format.
+
+`[fixed_cell].width`
+
+Fixed output cell width in pixels for `output.format = "c-fixed"`.
+
+`[fixed_cell].height`
+
+Fixed output cell height in pixels for `output.format = "c-fixed"`.
+
 ## Command Output
 
 The command prints:
@@ -75,4 +96,7 @@ The command exits with a non-zero status when:
 - No display units remain after whitespace filtering.
 - The font cannot be parsed.
 - A requested glyph is missing while `missing_glyphs = "error"`.
+- Fixed-cell C output is selected without exactly one size.
+- Fixed-cell C output is selected without `[fixed_cell]` settings.
+- A glyph bitmap does not fit the configured fixed cell.
 - An output file cannot be written.
