@@ -2,12 +2,40 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::config::GenerationSettings;
+use crate::alpha::pack_4bit_alpha;
+use crate::config::{GenerationSettings, OutputFormat};
 use crate::error::AppError;
-use crate::model::{GeneratedFont, GeneratedFontSize};
+use crate::model::{GeneratedFont, GeneratedFontSize, Glyph};
 use crate::output::{byte_array_literal, c_string_literal};
 
 pub fn write(
+    settings: &GenerationSettings,
+    font: &GeneratedFont,
+) -> Result<Vec<PathBuf>, AppError> {
+    if settings.output_format == Some(OutputFormat::CFixed) {
+        return write_fixed(settings, font);
+    }
+    write_metrics(settings, font)
+}
+
+fn write_fixed(
+    settings: &GenerationSettings,
+    font: &GeneratedFont,
+) -> Result<Vec<PathBuf>, AppError> {
+    let header_path = settings
+        .output_directory
+        .join(format!("{}.h", settings.output_name));
+    fs::write(&header_path, render_fixed_header(settings, font)?).map_err(|source| {
+        AppError::OutputWrite {
+            path: header_path.clone(),
+            source,
+        }
+    })?;
+
+    Ok(vec![header_path])
+}
+
+fn write_metrics(
     settings: &GenerationSettings,
     font: &GeneratedFont,
 ) -> Result<Vec<PathBuf>, AppError> {
@@ -32,6 +60,259 @@ pub fn write(
     })?;
 
     Ok(vec![header_path, source_path])
+}
+
+fn render_fixed_header(
+    settings: &GenerationSettings,
+    font: &GeneratedFont,
+) -> Result<String, AppError> {
+    let cell = settings
+        .fixed_cell
+        .ok_or(AppError::MissingSetting("fixed_cell"))?;
+    let size = font.sizes.first().ok_or(AppError::InvalidSetting {
+        setting: "generation.sizes",
+        message: "'c-fixed' requires exactly one generated size".to_string(),
+    })?;
+    let bytes_per_char = fixed_bytes_per_char(cell.width, cell.height)?;
+    let prefix = c_macro_prefix(&settings.output_name);
+    let mut text = String::new();
+
+    let _ = writeln!(
+        text,
+        "// Auto-generated 4-bit AA fixed-cell bitmap font: {}x{} pixels",
+        cell.width, cell.height
+    );
+    let _ = writeln!(
+        text,
+        "// Format: 4-bit grayscale alpha, nibble-packed, 2 pixels per byte"
+    );
+    let _ = writeln!(text, "// Pixel size: {}", size.pixel_size);
+    let _ = writeln!(text);
+    let _ = writeln!(text, "#ifndef {prefix}_H");
+    let _ = writeln!(text, "#define {prefix}_H");
+    let _ = writeln!(text);
+    let _ = writeln!(text, "#include <stdint.h>");
+    let _ = writeln!(text);
+    let _ = writeln!(text, "#define {prefix}_WIDTH {}", cell.width);
+    let _ = writeln!(text, "#define {prefix}_HEIGHT {}", cell.height);
+    let _ = writeln!(text, "#define {prefix}_BPP 4");
+    let _ = writeln!(text, "#define {prefix}_BYTES_PER_CHAR {bytes_per_char}");
+    let _ = writeln!(text, "#define {prefix}_CHAR_COUNT {}", size.glyphs.len());
+    let _ = writeln!(text);
+    let _ = writeln!(text, "static const char *{}_chars =", settings.output_name);
+    let chunks = mapping_chunks(size, 32);
+    for (index, chunk) in chunks.iter().enumerate() {
+        let ending = if index + 1 == chunks.len() { ";" } else { "" };
+        let _ = writeln!(text, "    {}{ending}", c_string_literal(chunk));
+    }
+    let _ = writeln!(text);
+    let _ = writeln!(
+        text,
+        "static const uint8_t {}_data[{}][{}] = {{",
+        settings.output_name,
+        size.glyphs.len(),
+        bytes_per_char
+    );
+
+    for glyph in &size.glyphs {
+        let packed = fixed_cell_bitmap(size, glyph, cell.width, cell.height, bytes_per_char)?;
+        let _ = writeln!(text, "    {{// '{}'", glyph.key);
+        text.push_str(&byte_array_literal(&packed, "     "));
+        let _ = writeln!(text, "    }},");
+    }
+
+    let _ = writeln!(text, "}};");
+    let _ = writeln!(text);
+    let _ = writeln!(text, "#endif");
+
+    Ok(text)
+}
+
+fn fixed_bytes_per_char(width: u32, height: u32) -> Result<usize, AppError> {
+    let pixels = u64::from(width) * u64::from(height);
+    let bytes = pixels.div_ceil(2);
+    usize::try_from(bytes).map_err(|_| AppError::InvalidSetting {
+        setting: "fixed_cell.width",
+        message: "fixed cell byte count is too large for this host".to_string(),
+    })
+}
+
+fn c_macro_prefix(name: &str) -> String {
+    name.chars()
+        .map(|ch| ch.to_ascii_uppercase())
+        .collect::<String>()
+}
+
+fn mapping_chunks(size: &GeneratedFontSize, chunk_chars: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    let mut count = 0usize;
+
+    for glyph in &size.glyphs {
+        if count >= chunk_chars && !current.is_empty() {
+            chunks.push(current);
+            current = String::new();
+            count = 0;
+        }
+        current.push_str(&glyph.key);
+        count += 1;
+    }
+
+    if !current.is_empty() || chunks.is_empty() {
+        chunks.push(current);
+    }
+
+    chunks
+}
+
+fn fixed_cell_bitmap(
+    size: &GeneratedFontSize,
+    glyph: &Glyph,
+    cell_width: u32,
+    cell_height: u32,
+    bytes_per_char: usize,
+) -> Result<Vec<u8>, AppError> {
+    if glyph.width > cell_width || glyph.height > cell_height {
+        return Err(AppError::FixedCellGlyphTooLarge {
+            glyph: glyph.key.clone(),
+            glyph_width: glyph.width,
+            glyph_height: glyph.height,
+            cell_width,
+            cell_height,
+        });
+    }
+
+    let cell_pixels = cell_pixel_count(cell_width, cell_height)?;
+    let mut cell_alpha = vec![0u8; cell_pixels];
+    let source_alpha = unpack_glyph_alpha(size, glyph)?;
+    let x_offset =
+        usize::try_from((cell_width - glyph.width) / 2).map_err(|_| AppError::InvalidSetting {
+            setting: "fixed_cell.width",
+            message: "fixed cell width cannot be represented on this host".to_string(),
+        })?;
+    let y_offset = usize::try_from((cell_height - glyph.height) / 2).map_err(|_| {
+        AppError::InvalidSetting {
+            setting: "fixed_cell.height",
+            message: "fixed cell height cannot be represented on this host".to_string(),
+        }
+    })?;
+    let source_width = usize::try_from(glyph.width).map_err(|_| AppError::MetricOverflow {
+        glyph: glyph.key.clone(),
+        metric: "width",
+    })?;
+    let source_height = usize::try_from(glyph.height).map_err(|_| AppError::MetricOverflow {
+        glyph: glyph.key.clone(),
+        metric: "height",
+    })?;
+    let target_width = usize::try_from(cell_width).map_err(|_| AppError::InvalidSetting {
+        setting: "fixed_cell.width",
+        message: "fixed cell width cannot be represented on this host".to_string(),
+    })?;
+
+    for row in 0..source_height {
+        for column in 0..source_width {
+            let Some(source_index) = row
+                .checked_mul(source_width)
+                .and_then(|base| base.checked_add(column))
+            else {
+                return Err(AppError::InvalidSetting {
+                    setting: "fixed_cell.width",
+                    message: "fixed cell source index overflow".to_string(),
+                });
+            };
+            let Some(target_row) = y_offset.checked_add(row) else {
+                return Err(AppError::InvalidSetting {
+                    setting: "fixed_cell.height",
+                    message: "fixed cell target row overflow".to_string(),
+                });
+            };
+            let Some(target_column) = x_offset.checked_add(column) else {
+                return Err(AppError::InvalidSetting {
+                    setting: "fixed_cell.width",
+                    message: "fixed cell target column overflow".to_string(),
+                });
+            };
+            let Some(target_index) = target_row
+                .checked_mul(target_width)
+                .and_then(|base| base.checked_add(target_column))
+            else {
+                return Err(AppError::InvalidSetting {
+                    setting: "fixed_cell.width",
+                    message: "fixed cell target index overflow".to_string(),
+                });
+            };
+            if let (Some(target), Some(source)) = (
+                cell_alpha.get_mut(target_index),
+                source_alpha.get(source_index),
+            ) {
+                *target = *source;
+            }
+        }
+    }
+
+    let packed = pack_4bit_alpha(&cell_alpha);
+    if packed.len() == bytes_per_char {
+        Ok(packed)
+    } else {
+        Err(AppError::InvalidSetting {
+            setting: "fixed_cell.width",
+            message: "fixed cell packed byte count mismatch".to_string(),
+        })
+    }
+}
+
+fn cell_pixel_count(width: u32, height: u32) -> Result<usize, AppError> {
+    let pixels = u64::from(width) * u64::from(height);
+    usize::try_from(pixels).map_err(|_| AppError::InvalidSetting {
+        setting: "fixed_cell.width",
+        message: "fixed cell pixel count is too large for this host".to_string(),
+    })
+}
+
+fn unpack_glyph_alpha(size: &GeneratedFontSize, glyph: &Glyph) -> Result<Vec<u8>, AppError> {
+    let pixel_count = glyph_pixel_count(glyph)?;
+    let end =
+        glyph
+            .bitmap_offset
+            .checked_add(glyph.bitmap_len)
+            .ok_or(AppError::InvalidSetting {
+                setting: "generation.sizes",
+                message: "glyph bitmap range overflow".to_string(),
+            })?;
+    let bytes = size
+        .bitmap_data
+        .get(glyph.bitmap_offset..end)
+        .ok_or(AppError::InvalidSetting {
+            setting: "generation.sizes",
+            message: "glyph bitmap range is outside generated bitmap data".to_string(),
+        })?;
+    let mut alpha = Vec::with_capacity(pixel_count);
+
+    for byte in bytes {
+        if alpha.len() < pixel_count {
+            alpha.push(byte >> 4);
+        }
+        if alpha.len() < pixel_count {
+            alpha.push(byte & 0x0f);
+        }
+    }
+
+    if alpha.len() == pixel_count {
+        Ok(alpha)
+    } else {
+        Err(AppError::InvalidSetting {
+            setting: "generation.sizes",
+            message: "glyph bitmap data is shorter than glyph dimensions".to_string(),
+        })
+    }
+}
+
+fn glyph_pixel_count(glyph: &Glyph) -> Result<usize, AppError> {
+    let pixels = u64::from(glyph.width) * u64::from(glyph.height);
+    usize::try_from(pixels).map_err(|_| AppError::MetricOverflow {
+        glyph: glyph.key.clone(),
+        metric: "width * height",
+    })
 }
 
 fn render_header(name: &str) -> String {

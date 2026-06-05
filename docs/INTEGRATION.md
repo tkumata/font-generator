@@ -4,9 +4,13 @@
 
 Phase 6 documents the assumptions needed to use generated font data in ESP32, Arduino, and Raspberry Pi Pico W projects.
 
-The generator emits packed 4-bit alpha bitmap data and glyph metadata. It does not emit display-driver code.
+The metrics format emits packed 4-bit alpha bitmap data and glyph metadata. It does not emit display-driver code.
+
+The recommended C integration model is fixed-cell bitmap data for firmware that does not have a font renderer.
 
 ## Common Data Contract
+
+### Metrics-Based MVP Contract
 
 Generated glyph records include:
 
@@ -25,22 +29,46 @@ Packed bitmap bytes store two 4-bit alpha pixels per byte:
 - Low nibble: second pixel.
 - Odd pixel counts pad the final low nibble with 0.
 
+### Fixed-Cell C Contract
+
+Fixed-cell C output is the preferred contract for ordinary microcontroller firmware.
+
+Generated data includes:
+
+- Fixed cell width.
+- Fixed cell height.
+- Bits per pixel.
+- Bytes per character.
+- Character count.
+- UTF-8 character mapping.
+- Bitmap data indexed by character mapping position.
+
+Firmware usage:
+
+- Find the display unit in the mapping.
+- Select the bitmap record at the same index.
+- Iterate `width * height` pixels.
+- Expand each 4-bit alpha nibble.
+- Draw to the display driver.
+
+No glyph metrics, bearings, advance values, bitmap offsets, or variable glyph dimensions are required.
+
 ## ESP32
 
 Assumptions:
 
 - The firmware has a display driver that can draw individual pixels or spans.
 - The generated C files are compiled into the firmware project.
-- The renderer expands each nibble to a display-specific blend value.
+- The firmware drawing loop expands each nibble to a display-specific blend value.
 - Font data can live in normal flash, or in a platform-specific const-data section added by the firmware project.
 
 Integration steps:
 
 - Generate C output.
-- Add the generated `.h` and `.c` files to the ESP-IDF component or Arduino sketch.
-- Include the generated header in the renderer.
-- Scan the selected size table for `glyph->key`.
-- Use `bitmap_offset`, `bitmap_len`, `width`, and `height` to read packed alpha data.
+- Prefer fixed-cell C output for new firmware.
+- Add the generated header to the ESP-IDF component or Arduino sketch.
+- Use the character mapping index to select the fixed bitmap record.
+- Expand nibbles while drawing the fixed cell.
 
 ## Arduino
 
@@ -54,7 +82,8 @@ Integration steps:
 
 - Generate C output.
 - Copy or include generated files in the sketch or library.
-- Use the generated top-level size table to select a pixel size.
+- Prefer fixed-cell C output for new sketches.
+- Use the character mapping index to select the fixed bitmap record.
 - Expand each packed alpha byte into two alpha values before blending.
 
 ## Raspberry Pi Pico W
@@ -70,7 +99,8 @@ Integration steps:
 - Generate C output for C or C++ firmware.
 - Add generated files to the target build.
 - Keep generated arrays in flash by leaving them `const`.
-- Implement glyph lookup and nibble expansion in the display renderer.
+- Prefer fixed-cell C output for new firmware.
+- Implement character index lookup and nibble expansion in the display drawing path.
 
 ## Rust Firmware
 

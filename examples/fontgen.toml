@@ -9,8 +9,13 @@ preserve_space = true
 language = "c"
 name = "sample_font"
 directory = "."
+format = "c-fixed"
 
 [generation]
-sizes = [16, 24]
+sizes = [26]
 alpha_bits = 4
 missing_glyphs = "error"
+
+[fixed_cell]
+width = 26
+height = 26

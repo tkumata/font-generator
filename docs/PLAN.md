@@ -192,6 +192,35 @@ Approval gate:
 
 Wait for user approval before any post-MVP expansion.
 
+### Phase 8: Rendererless C Fixed Bitmap Output
+
+Correct the C output direction for typical microcontroller firmware.
+
+Firmware projects often do not have a font renderer, a text layout engine, or baseline-aware glyph placement code. The C output must therefore provide font data that can be consumed with a small bitmap drawing loop.
+
+Deliverables:
+
+- Add a rendererless C output mode for fixed-cell bitmap fonts.
+- Support configured cell width and cell height for C fixed output.
+- Generate one fixed-length bitmap record per display unit.
+- Preserve character-list order so character index and bitmap index are identical.
+- Keep 4-bit alpha nibble packing.
+- Generate C symbols and macros that expose width, height, bits per pixel, bytes per character, character count, character mapping, and bitmap data.
+- Document that metrics-based C output is not the preferred microcontroller path.
+- Update C example code to demonstrate direct fixed-cell bitmap lookup and nibble expansion.
+
+Completion criteria:
+
+- C fixed output can be used without a font renderer.
+- Firmware needs only UTF-8 display-unit lookup, bitmap index selection, and a pixel or rectangle drawing loop.
+- Generated C fixed data uses deterministic fixed-size records.
+- `make check` passes.
+- `make build` passes.
+
+Approval gate:
+
+Wait for user approval after Phase 8 documentation before implementation.
+
 ## Deferred Topics
 
 - Font subsetting for proportional text layout engines.

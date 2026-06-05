@@ -14,11 +14,16 @@ preserve_space = true
 language = "c"
 name = "app_font"
 directory = "."
+format = "c-fixed"
 
 [generation]
-sizes = [16, 24]
+sizes = [26]
 alpha_bits = 4
 missing_glyphs = "error"
+
+[fixed_cell]
+width = 26
+height = 26
 ```
 
 ## Path Resolution
@@ -66,6 +71,31 @@ Rules:
 `directory`
 
 Directory where generated files are written.
+
+`format`
+
+C output format.
+
+Supported values:
+
+- `c-fixed`: fixed-cell C bitmap output for firmware without a font renderer.
+- `c-metrics`: metrics-based C output for advanced firmware that owns renderer logic.
+
+When omitted, the current compatibility behavior is metrics-based C output.
+
+## `[fixed_cell]`
+
+Settings for `output.format = "c-fixed"`.
+
+`width`
+
+Fixed output cell width in pixels.
+
+`height`
+
+Fixed output cell height in pixels.
+
+The fixed-cell format uses one bitmap record per display unit. Every record has `(width * height + 1) / 2` bytes for 4-bit alpha data.
 
 ## `[generation]`
 

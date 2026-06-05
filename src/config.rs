@@ -42,6 +42,39 @@ impl From<LanguageArg> for OutputLanguage {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputFormat {
+    CFixed,
+    CMetrics,
+}
+
+impl OutputFormat {
+    fn parse(value: &str) -> Result<Self, AppError> {
+        match value {
+            "c-fixed" => Ok(Self::CFixed),
+            "c-metrics" => Ok(Self::CMetrics),
+            _ => Err(AppError::InvalidSetting {
+                setting: "output.format",
+                message: "expected 'c-fixed' or 'c-metrics'".to_string(),
+            }),
+        }
+    }
+
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::CFixed => "c-fixed",
+            Self::CMetrics => "c-metrics",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FixedCellSettings {
+    pub width: u32,
+    pub height: u32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenerationSettings {
     pub config_path: Option<PathBuf>,
@@ -49,11 +82,13 @@ pub struct GenerationSettings {
     pub character_files: Vec<PathBuf>,
     pub preserve_space: bool,
     pub language: OutputLanguage,
+    pub output_format: Option<OutputFormat>,
     pub output_name: String,
     pub output_directory: PathBuf,
     pub sizes: Vec<u32>,
     pub alpha_bits: u8,
     pub missing_glyphs: MissingGlyphPolicy,
+    pub fixed_cell: Option<FixedCellSettings>,
 }
 
 impl GenerationSettings {
@@ -99,6 +134,11 @@ impl GenerationSettings {
         }
         let _ = writeln!(text, "preserve_space = {}", self.preserve_space);
         let _ = writeln!(text, "language = {}", self.language.as_str());
+        if let Some(output_format) = self.output_format {
+            let _ = writeln!(text, "output_format = {}", output_format.as_str());
+        } else {
+            let _ = writeln!(text, "output_format = <default>");
+        }
         let _ = writeln!(text, "output_name = {}", self.output_name);
         let _ = writeln!(
             text,
@@ -108,6 +148,15 @@ impl GenerationSettings {
         let _ = writeln!(text, "sizes = {:?}", self.sizes);
         let _ = writeln!(text, "alpha_bits = {}", self.alpha_bits);
         let _ = writeln!(text, "missing_glyphs = {}", self.missing_glyphs.as_str());
+        if let Some(fixed_cell) = self.fixed_cell {
+            let _ = writeln!(
+                text,
+                "fixed_cell = {}x{}",
+                fixed_cell.width, fixed_cell.height
+            );
+        } else {
+            let _ = writeln!(text, "fixed_cell = <none>");
+        }
         text
     }
 
@@ -167,6 +216,12 @@ impl GenerationSettings {
                 .unwrap_or(OutputLanguage::C),
         };
 
+        let output_format = output
+            .format
+            .as_deref()
+            .map(OutputFormat::parse)
+            .transpose()?;
+
         let output_name = cli
             .output_name
             .clone()
@@ -200,6 +255,8 @@ impl GenerationSettings {
             });
         }
 
+        let fixed_cell = parse_fixed_cell(raw.fixed_cell)?;
+
         let missing_glyphs = generation
             .missing_glyphs
             .as_deref()
@@ -207,17 +264,21 @@ impl GenerationSettings {
             .transpose()?
             .unwrap_or(MissingGlyphPolicy::Error);
 
+        validate_output_format(language, output_format, fixed_cell, &sizes)?;
+
         let settings = Self {
             config_path,
             font_path,
             character_files,
             preserve_space,
             language,
+            output_format,
             output_name,
             output_directory,
             sizes,
             alpha_bits,
             missing_glyphs,
+            fixed_cell,
         };
 
         settings.validate_paths()?;
@@ -274,6 +335,7 @@ struct RawConfig {
     input: Option<InputConfig>,
     output: Option<OutputConfig>,
     generation: Option<GenerationConfig>,
+    fixed_cell: Option<FixedCellConfig>,
 }
 
 impl RawConfig {
@@ -305,6 +367,7 @@ struct OutputConfig {
     language: Option<String>,
     name: Option<String>,
     directory: Option<PathBuf>,
+    format: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -312,6 +375,29 @@ struct GenerationConfig {
     sizes: Option<Vec<u32>>,
     alpha_bits: Option<u8>,
     missing_glyphs: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FixedCellConfig {
+    width: Option<u32>,
+    height: Option<u32>,
+}
+
+fn parse_fixed_cell(
+    fixed_cell: Option<FixedCellConfig>,
+) -> Result<Option<FixedCellSettings>, AppError> {
+    fixed_cell
+        .map(|cell| {
+            let width = cell
+                .width
+                .ok_or(AppError::MissingSetting("fixed_cell.width"))?;
+            let height = cell
+                .height
+                .ok_or(AppError::MissingSetting("fixed_cell.height"))?;
+            validate_fixed_cell(width, height)?;
+            Ok(FixedCellSettings { width, height })
+        })
+        .transpose()
 }
 
 fn normalize_existing_config_path(path: &Path) -> Result<PathBuf, AppError> {
@@ -343,6 +429,49 @@ fn validate_sizes(sizes: &[u32]) -> Result<(), AppError> {
         return Err(AppError::InvalidSetting {
             setting: "generation.sizes",
             message: "sizes must be positive pixel values".to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_fixed_cell(width: u32, height: u32) -> Result<(), AppError> {
+    if width == 0 {
+        return Err(AppError::InvalidSetting {
+            setting: "fixed_cell.width",
+            message: "width must be a positive pixel value".to_string(),
+        });
+    }
+    if height == 0 {
+        return Err(AppError::InvalidSetting {
+            setting: "fixed_cell.height",
+            message: "height must be a positive pixel value".to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn validate_output_format(
+    language: OutputLanguage,
+    output_format: Option<OutputFormat>,
+    fixed_cell: Option<FixedCellSettings>,
+    sizes: &[u32],
+) -> Result<(), AppError> {
+    if output_format != Some(OutputFormat::CFixed) {
+        return Ok(());
+    }
+    if language != OutputLanguage::C {
+        return Err(AppError::InvalidSetting {
+            setting: "output.format",
+            message: "'c-fixed' requires output.language = 'c'".to_string(),
+        });
+    }
+    if fixed_cell.is_none() {
+        return Err(AppError::MissingSetting("fixed_cell"));
+    }
+    if sizes.len() != 1 {
+        return Err(AppError::InvalidSetting {
+            setting: "generation.sizes",
+            message: "'c-fixed' requires exactly one size".to_string(),
         });
     }
     Ok(())
@@ -491,6 +620,7 @@ mod tests {
         )?;
         ensure(settings.preserve_space, "preserve_space should be true")?;
         ensure_eq("language", &settings.language, &OutputLanguage::Rust)?;
+        ensure_eq("output_format", &settings.output_format, &None)?;
         ensure_eq(
             "output_name",
             &settings.output_name,
@@ -499,6 +629,7 @@ mod tests {
         ensure_eq("output_directory", &settings.output_directory, &root)?;
         ensure_eq("sizes", &settings.sizes, &vec![16, 24])?;
         ensure_eq("alpha_bits", &settings.alpha_bits, &4)?;
+        ensure_eq("fixed_cell", &settings.fixed_cell, &None)?;
         ensure_eq(
             "missing_glyphs",
             &settings.missing_glyphs,
@@ -531,6 +662,125 @@ mod tests {
             &"cli_font".to_string(),
         )?;
         ensure_eq("sizes", &settings.sizes, &vec![14])?;
+        ensure_eq("output_format", &settings.output_format, &None)?;
+        ensure_eq("fixed_cell", &settings.fixed_cell, &None)?;
+        Ok(())
+    }
+
+    #[test]
+    fn parses_fixed_cell_c_output_settings() -> Result<(), Box<dyn std::error::Error>> {
+        let root = temp_project("fixed-cell")?;
+        let config = write_config(
+            &root,
+            r#"
+                [font]
+                path = "fonts/font.ttf"
+
+                [input]
+                chars = ["chars/main.txt"]
+
+                [output]
+                language = "c"
+                name = "fixed_font"
+                directory = "."
+                format = "c-fixed"
+
+                [generation]
+                sizes = [26]
+
+                [fixed_cell]
+                width = 26
+                height = 26
+            "#,
+        )?;
+
+        let settings = GenerationSettings::from_cli(&cli_for(config))?;
+
+        ensure_eq("language", &settings.language, &OutputLanguage::C)?;
+        ensure_eq(
+            "output_format",
+            &settings.output_format,
+            &Some(OutputFormat::CFixed),
+        )?;
+        ensure_eq(
+            "fixed_cell",
+            &settings.fixed_cell,
+            &Some(FixedCellSettings {
+                width: 26,
+                height: 26,
+            }),
+        )?;
+        ensure_eq("sizes", &settings.sizes, &vec![26])?;
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_fixed_cell_c_output_with_multiple_sizes() -> Result<(), Box<dyn std::error::Error>> {
+        let root = temp_project("fixed-cell-multiple-sizes")?;
+        let config = write_config(
+            &root,
+            r#"
+                [font]
+                path = "fonts/font.ttf"
+
+                [input]
+                chars = ["chars/main.txt"]
+
+                [output]
+                language = "c"
+                format = "c-fixed"
+
+                [generation]
+                sizes = [16, 26]
+
+                [fixed_cell]
+                width = 26
+                height = 26
+            "#,
+        )?;
+
+        ensure(
+            matches!(
+                GenerationSettings::from_cli(&cli_for(config)),
+                Err(AppError::InvalidSetting {
+                    setting: "generation.sizes",
+                    ..
+                })
+            ),
+            "expected generation.sizes invalid setting error",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_fixed_cell_c_output_without_cell_settings() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let root = temp_project("fixed-cell-missing")?;
+        let config = write_config(
+            &root,
+            r#"
+                [font]
+                path = "fonts/font.ttf"
+
+                [input]
+                chars = ["chars/main.txt"]
+
+                [output]
+                language = "c"
+                format = "c-fixed"
+
+                [generation]
+                sizes = [26]
+            "#,
+        )?;
+
+        ensure(
+            matches!(
+                GenerationSettings::from_cli(&cli_for(config)),
+                Err(AppError::MissingSetting("fixed_cell"))
+            ),
+            "expected missing fixed_cell setting",
+        )?;
         Ok(())
     }
 

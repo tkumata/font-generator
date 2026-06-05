@@ -55,6 +55,8 @@ Glyph
 
 The model should avoid output-language-specific fields. C and Rust generators should translate the shared model into language-specific code.
 
+Phase 8 adds an output-specific fixed-cell projection for C. The shared rasterized model may still contain metrics, but C fixed output consumes it at generation time and writes fixed-size bitmap records so firmware does not need metrics.
+
 ## Config Model
 
 Config should be normalized before generation.
@@ -117,15 +119,35 @@ Phase 4 tests cover quantization endpoints, mid coverage rounding, even packing,
 
 ## Output Generation
 
-C output should be suitable for embedded projects.
+C metrics output is suitable only for firmware that already has renderer-like code.
 
-Expected C structure:
+Existing C metrics structure:
 
 - Header declares glyph metadata structs and extern font data.
 - Source defines glyph tables, bitmap byte arrays, and font descriptors.
 - Arrays should be `const`.
 - Size-specific arrays are named from the validated output name and pixel size.
 - Empty skipped-output arrays use a dummy element while the public count remains 0, so the generated C stays standard-compatible.
+
+C fixed output is the preferred C format for ordinary microcontroller projects.
+
+Expected C fixed structure:
+
+- Header-only output by default.
+- Compile-time constants for width, height, bits per pixel, bytes per character, and character count.
+- One UTF-8 mapping string in input order.
+- One `uint8_t` bitmap array with fixed `[char_count][bytes_per_char]` shape.
+- No runtime glyph metrics.
+- No runtime bitmap offsets.
+- No runtime variable glyph dimensions.
+
+Runtime C fixed usage:
+
+1. Locate the display unit in the mapping.
+2. Use the mapping index to select the fixed bitmap record.
+3. Iterate the fixed cell pixels.
+4. Expand each 4-bit alpha nibble.
+5. Draw through the firmware display driver.
 
 Rust output should be suitable for embedded Rust projects.
 
@@ -144,6 +166,50 @@ Phase 5 implementation decision:
 - Write Rust output as `{name}.rs`.
 - Return written paths to the CLI for summary output.
 - Keep lookup helper functions deferred to examples or later integration work; Phase 5 provides deterministic lookup tables.
+
+## Phase 8 Rendererless C Fixed Bitmap Design
+
+Problem:
+
+The existing C output assumes the target firmware has enough renderer logic to interpret `advance_x`, bearings, variable glyph dimensions, and bitmap offsets. That is not the common case for small microcontroller display firmware.
+
+Decision:
+
+- Add an explicit C fixed-cell output format.
+- Keep the metrics-based output available only as a non-default advanced format.
+- Generate data that can be used by a simple drawing loop.
+- Perform glyph placement into the fixed cell at generation time.
+- Treat a glyph that cannot fit the configured cell as a generation error in Phase 8.
+
+Configuration design:
+
+- Add an output format setting with at least `c-fixed` and `c-metrics`.
+- Default C generation should prefer `c-fixed` after the migration decision is implemented.
+- Add a fixed-cell settings group for width and height.
+- Restrict Phase 8 C fixed output to one configured pixel size to avoid ambiguous macro names and runtime size selection.
+
+Generation design:
+
+- Rasterize the selected font size using the existing font path.
+- Allocate a zero-filled fixed-cell alpha buffer for each glyph.
+- Copy the rasterized glyph coverage into the fixed cell using deterministic placement rules.
+- Pack the fixed-cell alpha buffer as 4-bit alpha.
+- Emit every record with identical byte length.
+
+Placement design:
+
+- Phase 8 should use a simple, documented placement rule before adding optional tuning.
+- The default rule is center the rasterized glyph bitmap in the fixed cell.
+- If centering would still exceed the fixed cell, return an error with the display unit and required bitmap size.
+- Baseline-sensitive placement can be added later only if a real firmware integration requires it.
+
+Testing design:
+
+- Unit-test bytes-per-character calculation.
+- Unit-test nibble packing for fixed-cell buffers.
+- Unit-test deterministic C fixed header rendering.
+- Integration-test a small generated fixed C output file.
+- Example-test direct bitmap lookup without glyph metrics.
 
 ## Error Handling
 

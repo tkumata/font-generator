@@ -43,6 +43,16 @@ pub enum AppError {
     MissingGlyphs(String),
     #[error("metric overflow for glyph {glyph}: {metric}")]
     MetricOverflow { glyph: String, metric: &'static str },
+    #[error(
+        "glyph {glyph} bitmap {glyph_width}x{glyph_height} does not fit fixed cell {cell_width}x{cell_height}"
+    )]
+    FixedCellGlyphTooLarge {
+        glyph: String,
+        glyph_width: u32,
+        glyph_height: u32,
+        cell_width: u32,
+        cell_height: u32,
+    },
     #[error("output directory not found: {0}")]
     OutputDirectoryNotFound(PathBuf),
     #[error("failed to write output file {path}: {source}")]
