@@ -221,6 +221,28 @@ Approval gate:
 
 Wait for user approval after Phase 8 documentation before implementation.
 
+### Phase 9: C Fixed Output Usage Documentation
+
+Document how firmware consumes generated `c-fixed` font data.
+
+Deliverables:
+
+- Add a complete generation and integration workflow to `README.md`.
+- Explain generated macros, the UTF-8 mapping string, and index-aligned bitmap records.
+- Provide C examples for UTF-8 lookup, nibble unpacking, alpha blending, glyph drawing, and string drawing.
+- State the fixed-cell and Unicode limitations that affect firmware integration.
+
+Completion criteria:
+
+- A firmware developer can generate a header and use it without reconstructing the data contract from source code.
+- The documented C code matches the generated symbol names and nibble order.
+- `make check` passes.
+- `make build` passes.
+
+Approval gate:
+
+Wait for user approval after the Phase 9 documentation update.
+
 ## Deferred Topics
 
 - Font subsetting for proportional text layout engines.

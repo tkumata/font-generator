@@ -79,6 +79,15 @@ Phase 8 requirement detail:
 - The C fixed output must not require `advance_x`, `bearing_x`, `bearing_y`, glyph offsets, or variable bitmap lengths at firmware runtime.
 - The generated mapping string and bitmap array must remain index-aligned.
 
+Phase 9 documentation requirement detail:
+
+- README must document the complete `c-fixed` workflow from generation through firmware drawing.
+- README must identify every generated fixed-cell macro and data symbol used by firmware.
+- README must explain UTF-8 display-unit lookup without assuming one byte per character.
+- README must explain high-nibble-first 4-bit alpha unpacking.
+- README must show how the caller supplies foreground color, background color, and display output.
+- README examples must avoid heap allocation.
+
 ### Verification And Examples
 
 - The repository must include a sample config file.
@@ -112,6 +121,7 @@ Phase approval points:
 - Phase 6 approval: verification and examples accepted.
 - Phase 7 approval: final documentation accepted.
 - Phase 8 approval: rendererless C fixed bitmap output accepted.
+- Phase 9 approval: C fixed output usage documentation accepted.
 
 ## Out Of Scope For MVP
 

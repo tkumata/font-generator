@@ -177,6 +177,17 @@ Runtime contract:
 - Firmware draws the fixed cell at the caller-provided x and y position.
 - Firmware does not read glyph metrics, advance values, bearings, or bitmap offsets.
 
+README integration contract:
+
+- Generate with `language = "c"` and `output.format = "c-fixed"`.
+- Include the generated `{output_name}.h` in the firmware target.
+- Treat `{output_name}_chars` as concatenated UTF-8 display units, not as a byte-indexed character array.
+- Use the display-unit position in `{output_name}_chars` as the first index of `{output_name}_data`.
+- Read pixels in row-major order over `{PREFIX}_WIDTH * {PREFIX}_HEIGHT`.
+- Read an even pixel index from the high nibble and an odd pixel index from the low nibble.
+- Interpret alpha as an integer from 0 through 15.
+- Let firmware-specific code blend or otherwise map alpha to the target display format.
+
 Glyph placement contract:
 
 - Generation places each rasterized glyph into the configured fixed cell.

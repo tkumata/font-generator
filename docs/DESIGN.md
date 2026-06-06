@@ -211,6 +211,23 @@ Testing design:
 - Integration-test a small generated fixed C output file.
 - Example-test direct bitmap lookup without glyph metrics.
 
+## Phase 9 C Fixed Usage Documentation Design
+
+The README usage section should follow the runtime sequence used by firmware:
+
+- Generate one fixed-cell header.
+- Add the header to the firmware build.
+- Decode one UTF-8 display unit at a time.
+- Find the matching display unit in the generated mapping.
+- Select the bitmap at the same index.
+- Unpack 4-bit alpha in row-major pixel order.
+- Blend foreground and background colors in firmware-owned code.
+- Advance by the generated fixed cell width.
+
+The example should use small platform-neutral C helpers and a display callback so the generated data contract remains separate from ESP-IDF, Arduino, Pico SDK, or a particular LCD driver.
+
+The README must distinguish byte length from character count. The mapping string is UTF-8, while `{PREFIX}_CHAR_COUNT` counts generated display units.
+
 ## Error Handling
 
 Errors should be explicit and actionable.
