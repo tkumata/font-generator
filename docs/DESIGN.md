@@ -228,6 +228,54 @@ The example should use small platform-neutral C helpers and a display callback s
 
 The README must distinguish byte length from character count. The mapping string is UTF-8, while `{PREFIX}_CHAR_COUNT` counts generated display units.
 
+## Phase 10 Tight C Fixed Glyph Cell Design
+
+Problem:
+
+The Phase 8 fixed-cell projection emits bitmap records that can use the full configured width and height. Firmware that draws the records adjacent to each other on an LCD can therefore show touching glyphs. It also emits every display unit at one width, which does not match the practical TouchKBD-style split between half-width ASCII and full-width Japanese glyph data.
+
+Decision:
+
+- Keep the existing `fixed_cell.width` and `fixed_cell.height` settings as the configured requested size.
+- Derive effective generated dimensions from the configured cell.
+- Use `height - 1` for every generated record.
+- Use `width - 1` for non-ASCII display units.
+- Use `width / 2 - 1` for ASCII display units.
+- Emit a per-display-unit width table for firmware.
+- Keep one deterministic data row length by storing half-width records in rows sized for the full-width byte count.
+
+Sizing design:
+
+- Add pure helpers for effective height, full-width width, half-width width, and ASCII half-width classification.
+- Reject fixed-cell settings that cannot produce positive effective dimensions.
+- Avoid adding a new configuration option until there is a second real spacing requirement.
+
+Rasterization design:
+
+- `fontdue` rasterization still receives a pixel size.
+- For `c-fixed`, the rasterized model is projected into the effective output dimensions before C emission.
+- Projection copies only the pixels that fit the target effective width and height.
+- The copy is centered when the source bitmap is smaller than the target.
+- When the source bitmap exceeds the target, the projection clips the bitmap to the target effective area instead of failing, because the target dimensions are the explicit output contract.
+
+C output design:
+
+- Emit `{PREFIX}_WIDTH` as the generated full-width record width.
+- Emit `{PREFIX}_HEIGHT` as the generated record height.
+- Emit `{PREFIX}_FULL_WIDTH` and `{PREFIX}_HALF_WIDTH`.
+- Emit `{PREFIX}_FULL_BYTES_PER_CHAR` and `{PREFIX}_HALF_BYTES_PER_CHAR`.
+- Keep `{PREFIX}_BYTES_PER_CHAR` as a full-width compatibility alias.
+- Emit `{output_name}_widths[char_count]`.
+- Emit `{output_name}_data[char_count][full_bytes_per_char]`.
+- Store half-width records at the beginning of each row; unused bytes in the fixed row stay zero.
+
+Testing design:
+
+- Unit-test effective dimension helpers.
+- Unit-test ASCII half-width classification.
+- Unit-test deterministic fixed C output for mixed ASCII and Japanese model data.
+- Integration-test generated fixed C header symbols and array shapes.
+
 ## Error Handling
 
 Errors should be explicit and actionable.

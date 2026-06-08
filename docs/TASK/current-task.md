@@ -2,48 +2,55 @@
 
 ## Phase
 
-Phase 9: C Fixed Output Usage Documentation
+Phase 10: Tight C Fixed Glyph Cells
 
 ## Scope
 
-Document the concrete firmware usage of generated `c-fixed` font data in `README.md`, including generation, build integration, UTF-8 lookup, bitmap selection, nibble unpacking, alpha blending, glyph drawing, and string drawing.
+Change `c-fixed` output so generated glyph records use one-pixel-smaller effective dimensions and ASCII display units use half-width records. Keep generated C data directly usable by firmware with stable index-based lookup.
 
 ## Completed
 
-- Archived the Phase 8 task note as `docs/TASK/202606061325.md`.
-- Confirmed generated fixed-cell symbol names and array shapes in `src/output/c.rs`.
-- Confirmed the high-nibble-first alpha packing and index-aligned UTF-8 mapping contract.
-- Added the Phase 9 plan, requirements, specification, design, and ADR documentation.
-- Added a concrete `c-fixed` firmware integration walkthrough to README.
+- Archived the Phase 9 task note as `docs/TASK/202606081648.md`.
+- Added Phase 10 plan, requirements, specification, design, and ADR documentation.
+- Implemented effective fixed-cell dimension helpers.
+- Implemented ASCII half-width classification.
+- Updated `c-fixed` C header rendering to emit full-width and half-width constants, per-character widths, and fixed-stride bitmap records.
+- Updated tests for Phase 10 sizing and output shape.
+- Updated README usage text to explain per-character widths.
+- Ran `make check`.
+- Ran `make build`.
 
 ## Remaining Work
 
-- Wait for user approval of the Phase 9 documentation.
+- Wait for user review of the Phase 10 implementation.
 
 ## Commands Run
 
-- `rg --files -g 'README.md' -g 'docs/**/*.md' -g 'Makefile' -g '*.h' -g '*.c' -g '*.cpp' -g '*.py' -g '*.rs'`
-- `git status --short`
-- `rg -n "c-fix|c_fix|font|glyph|生成|output|header" README.md docs .`
-- `git diff --cached -- README.md .vscode/settings.json`
-- `sed -n '1,240p' README.md`
-- `sed -n '1,320p' src/output/c.rs`
-- `sed -n '1,240p' examples/c/minimal_usage.c`
-- `sed -n '1,180p' docs/INTEGRATION.md`
 - `date +%Y%m%d%H%M`
-- `mv docs/TASK/current-task.md docs/TASK/202606061325.md`
-- `rg -n '^\|.*\|$' README.md docs --glob '*.md'`
-- `awk ... README.md | cc -std=c11 -fsyntax-only -x c - ...`
+- `sed -n '1,260p' docs/PLAN.md`
+- `sed -n '1,340p' docs/REQUIREMENTS.md`
+- `sed -n '1,360p' docs/SPECIFICATIONS.md`
+- `sed -n '1,360p' docs/DESIGN.md`
+- `sed -n '1,260p' README.md`
+- `sed -n '1,140p' docs/TASK/current-task.md`
+- `mv docs/TASK/current-task.md docs/TASK/202606081648.md`
+- `cargo fmt --check`
+- `cargo fmt`
+- `make check`
 - `make check`
 - `make build`
+- `sed -n '1,220p' .agent-hooks/state/logs/check.log`
+- `sed -n '1,220p' .agent-hooks/state/logs/build.log`
+- `git status --short`
+- `rg -n '^\\|.*\\|$' README.md docs --glob '*.md'`
 
 ## Verification
 
 - Markdown table usage was checked; no Markdown table was added.
-- The README C example passed `cc -std=c11 -fsyntax-only` against an existing generated fixed-cell header with equivalent symbol aliases.
-- `make check` passed with 23 unit tests and 3 integration tests.
+- Existing `.agent-hooks/state/logs/check.log` and `build.log` were reviewed. They contain older successful runs.
+- The first Phase 10 `make check` run failed on clippy `similar_names` in `src/output/c.rs`; the variable names were corrected.
+- The final `make check` passed with 25 unit tests and 3 integration tests.
 - `make build` passed.
-- Existing `.agent-hooks/state/logs/check.log` and `build.log` were reviewed. They contain an older successful run; the direct Phase 9 commands above also passed.
 
 ## Next Step
 

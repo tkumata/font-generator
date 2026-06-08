@@ -156,23 +156,42 @@ Generated C fixed output contains:
 - `#include <stdint.h>`.
 - `{PREFIX}_WIDTH`.
 - `{PREFIX}_HEIGHT`.
+- `{PREFIX}_FULL_WIDTH`.
+- `{PREFIX}_HALF_WIDTH`.
 - `{PREFIX}_BPP`.
-- `{PREFIX}_BYTES_PER_CHAR`.
+- `{PREFIX}_FULL_BYTES_PER_CHAR`.
+- `{PREFIX}_HALF_BYTES_PER_CHAR`.
+- `{PREFIX}_BYTES_PER_CHAR` as a compatibility alias for full-width records.
 - `{PREFIX}_CHAR_COUNT`.
 - A UTF-8 character mapping string.
-- A two-dimensional bitmap array with shape `[char_count][bytes_per_char]`.
+- A per-display-unit width table.
+- A two-dimensional bitmap array with shape `[char_count][full_bytes_per_char]`.
 
 For 4-bit alpha:
 
-- `bytes_per_char = (width * height + 1) / 2`.
+- `full_bytes_per_char = (full_width * height + 1) / 2`.
+- `half_bytes_per_char = (half_width * height + 1) / 2`.
+- Half-width records are stored in the same row stride as full-width records so each index has a deterministic fixed record length.
 - High nibble stores the first pixel.
 - Low nibble stores the second pixel.
 - Odd pixel counts pad the final low nibble with 0.
+
+Effective glyph sizing:
+
+- The configured fixed cell size remains the user-facing size request.
+- Generated bitmap records reserve one pixel of spacing by using an effective height of `fixed_cell.height - 1`.
+- Full-width display units use `fixed_cell.width - 1`.
+- Half-width display units use `fixed_cell.width / 2 - 1`.
+- ASCII letters, ASCII digits, ASCII punctuation, and ASCII symbols are half-width display units.
+- Non-ASCII display units are full-width display units.
+- The normal ASCII space follows the same half-width rule when it is preserved by input settings.
+- For `fixed_cell.width = 26` and `fixed_cell.height = 26`, generated half-width records are 12 by 25 and full-width records are 25 by 25.
 
 Runtime contract:
 
 - Firmware finds the display-unit index in the mapping.
 - Firmware reads `bitmap_data[index]`.
+- Firmware reads `widths[index]` to determine whether to draw and advance by the half-width or full-width record width.
 - Firmware expands each nibble to alpha.
 - Firmware draws the fixed cell at the caller-provided x and y position.
 - Firmware does not read glyph metrics, advance values, bearings, or bitmap offsets.
@@ -183,7 +202,8 @@ README integration contract:
 - Include the generated `{output_name}.h` in the firmware target.
 - Treat `{output_name}_chars` as concatenated UTF-8 display units, not as a byte-indexed character array.
 - Use the display-unit position in `{output_name}_chars` as the first index of `{output_name}_data`.
-- Read pixels in row-major order over `{PREFIX}_WIDTH * {PREFIX}_HEIGHT`.
+- Use `{output_name}_widths[index]` as the generated glyph width.
+- Read pixels in row-major order over `{output_name}_widths[index] * {PREFIX}_HEIGHT`.
 - Read an even pixel index from the high nibble and an odd pixel index from the low nibble.
 - Interpret alpha as an integer from 0 through 15.
 - Let firmware-specific code blend or otherwise map alpha to the target display format.
@@ -194,6 +214,7 @@ Glyph placement contract:
 - The fixed cell origin is the only runtime placement origin.
 - If a rasterized glyph does not fit the cell, generation must report a clear error unless a later explicit clipping option is added.
 - Phase 8 does not add kerning, baseline layout, proportional text layout, or runtime shaping.
+- Phase 10 changes the generated fixed-cell projection to use effective half-width or full-width records instead of always emitting the configured full cell width.
 
 ## Output Files
 

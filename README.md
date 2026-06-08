@@ -142,14 +142,21 @@ Add `generated/app_font.h` to the firmware include path and include it:
 
 The generated header provides:
 
-- `APP_FONT_WIDTH` and `APP_FONT_HEIGHT`: fixed glyph cell dimensions in pixels.
+- `APP_FONT_WIDTH` and `APP_FONT_HEIGHT`: generated full-width glyph dimensions in pixels.
+- `APP_FONT_FULL_WIDTH`: generated full-width glyph width.
+- `APP_FONT_HALF_WIDTH`: generated half-width ASCII glyph width.
 - `APP_FONT_BPP`: bits per pixel, currently `4`.
-- `APP_FONT_BYTES_PER_CHAR`: packed bytes in one fixed-cell bitmap.
+- `APP_FONT_FULL_BYTES_PER_CHAR`: packed bytes in one full-width bitmap record.
+- `APP_FONT_HALF_BYTES_PER_CHAR`: packed bytes in one half-width bitmap record.
+- `APP_FONT_BYTES_PER_CHAR`: compatibility alias for full-width record bytes.
 - `APP_FONT_CHAR_COUNT`: number of generated display units.
 - `app_font_chars`: all generated display units concatenated as UTF-8.
+- `app_font_widths[index]`: generated pixel width for display-unit position `index`.
 - `app_font_data[index]`: the bitmap corresponding to display-unit position `index`.
 
 `APP_FONT_CHAR_COUNT` is a display-unit count, not the byte length of `app_font_chars`. ASCII uses one UTF-8 byte, while Japanese characters normally use three. Parse UTF-8 units before comparing them.
+
+The configured fixed-cell size is treated as the requested size. Generated bitmap records reserve one pixel of spacing: a configured 26 by 26 cell produces 25-pixel-high records. Non-ASCII display units are 25 pixels wide, while ASCII letters, digits, punctuation, symbols, and preserved spaces are 12 pixels wide.
 
 The following platform-neutral example finds characters, unpacks alpha, blends RGB565 colors, and draws fixed-cell text through a firmware-provided pixel function:
 
@@ -211,10 +218,11 @@ static void draw_glyph(
     put_pixel_fn put_pixel
 ) {
     const uint8_t *bitmap = app_font_data[glyph_index];
+    const size_t glyph_width = app_font_widths[glyph_index];
 
     for (size_t y = 0; y < APP_FONT_HEIGHT; ++y) {
-        for (size_t x = 0; x < APP_FONT_WIDTH; ++x) {
-            const size_t pixel_index = y * APP_FONT_WIDTH + x;
+        for (size_t x = 0; x < glyph_width; ++x) {
+            const size_t pixel_index = y * glyph_width + x;
             const uint8_t alpha = alpha_at(bitmap, pixel_index);
             put_pixel(
                 origin_x + (int)x,
@@ -239,14 +247,16 @@ static void draw_text(
         if (unit_len == 0u) return;
         if (find_glyph(text, unit_len, &glyph_index)) {
             draw_glyph(glyph_index, x, y, foreground, background, put_pixel);
+            x += (int)app_font_widths[glyph_index];
+        } else {
+            x += (int)APP_FONT_FULL_WIDTH;
         }
         text += unit_len;
-        x += APP_FONT_WIDTH;
     }
 }
 ```
 
-Call `draw_text("温度", x, y, foreground, background, lcd_put_pixel)` after adapting `lcd_put_pixel` to the target display driver. The example advances every display unit by `APP_FONT_WIDTH`; newline handling, clipping, wrapping, transparent-background drawing, and missing-glyph fallback belong to the firmware.
+Call `draw_text("温度", x, y, foreground, background, lcd_put_pixel)` after adapting `lcd_put_pixel` to the target display driver. The example advances matched display units by `app_font_widths[index]`; newline handling, clipping, wrapping, transparent-background drawing, and missing-glyph fallback belong to the firmware.
 
 Bitmap pixels are row-major. Each byte stores two 4-bit alpha values: the first pixel is in the high nibble and the second is in the low nibble. Alpha `0` selects the background and alpha `15` selects the foreground.
 

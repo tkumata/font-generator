@@ -243,6 +243,38 @@ Approval gate:
 
 Wait for user approval after the Phase 9 documentation update.
 
+### Phase 10: Tight C Fixed Glyph Cells
+
+Adjust fixed-cell font generation so generated glyph pixels do not occupy the full configured cell.
+
+Problem:
+
+Generated glyph data currently uses the configured size too aggressively. On LCD firmware that draws cells next to each other, adjacent glyphs can visually touch. ASCII letters, ASCII digits, and ASCII symbols also need a half-width cell so mixed Japanese and ASCII text can use firmware data similar to the existing TouchKBD font headers.
+
+Deliverables:
+
+- Generate glyph bitmaps into an effective area that is one pixel smaller than the configured size in both dimensions.
+- Treat ASCII letters, ASCII digits, ASCII punctuation, and ASCII symbols as half-width display units.
+- Keep non-ASCII display units full-width.
+- For configured size 26, generate full-width glyph records as 25 pixels wide and 25 pixels high.
+- For configured size 26, generate half-width glyph records as 12 pixels wide and 25 pixels high.
+- Make generated `c-fixed` C data usable with minimal copying into embedded C projects.
+- Document the distinction between configured cell size, effective glyph area, full-width glyph width, and half-width glyph width.
+- Add tests for half-width sizing, full-width sizing, and generated C fixed output shape.
+
+Completion criteria:
+
+- `c-fixed` output exposes fixed bitmap records using the effective per-glyph dimensions.
+- ASCII display units use half-width records.
+- Non-ASCII display units use full-width records.
+- Generated C output documents the generated record dimensions through macros.
+- `make check` passes.
+- `make build` passes.
+
+Approval gate:
+
+Wait for user approval after Phase 10 implementation and verification.
+
 ## Deferred Topics
 
 - Font subsetting for proportional text layout engines.

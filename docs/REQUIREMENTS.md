@@ -88,6 +88,19 @@ Phase 9 documentation requirement detail:
 - README must show how the caller supplies foreground color, background color, and display output.
 - README examples must avoid heap allocation.
 
+Phase 10 fixed glyph area requirement detail:
+
+- For `c-fixed` output, the generated drawable glyph area must be smaller than the configured size by one pixel in both dimensions.
+- For a configured size `N`, full-width display units must use a generated width of `N - 1`.
+- For a configured size `N`, half-width display units must use a generated width of `N / 2 - 1`.
+- For a configured size `N`, every generated display unit must use a generated height of `N - 1`.
+- ASCII letters, ASCII digits, ASCII punctuation, and ASCII symbols must be treated as half-width display units.
+- Non-ASCII display units must be treated as full-width display units.
+- For configured size 26, half-width display units must be 12 pixels wide and 25 pixels high.
+- For configured size 26, full-width display units must be 25 pixels wide and 25 pixels high.
+- Generated C fixed output must expose enough constants for firmware to draw the records without interpreting glyph metrics.
+- Generated C fixed output should be close to directly usable in embedded C projects after copying the generated header.
+
 ### Verification And Examples
 
 - The repository must include a sample config file.
@@ -106,6 +119,7 @@ Phase 9 documentation requirement detail:
 - Tests must cover rasterization boundary behavior that determines whether a display unit is renderable.
 - Tests must cover deterministic output rendering for C and Rust.
 - Tests must cover generated output file writing.
+- Tests must cover the Phase 10 half-width and full-width effective cell calculations.
 
 ## Phase Approval Requirements
 
@@ -122,6 +136,7 @@ Phase approval points:
 - Phase 7 approval: final documentation accepted.
 - Phase 8 approval: rendererless C fixed bitmap output accepted.
 - Phase 9 approval: C fixed output usage documentation accepted.
+- Phase 10 approval: tight C fixed glyph cells accepted.
 
 ## Out Of Scope For MVP
 
