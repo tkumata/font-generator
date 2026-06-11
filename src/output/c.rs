@@ -73,14 +73,16 @@ fn render_fixed_header(
         setting: "generation.sizes",
         message: "'c-fixed' requires exactly one generated size".to_string(),
     })?;
-    let bytes_per_char = fixed_bytes_per_char(cell.width, cell.height)?;
+    let dimensions = FixedCellDimensions::from_config(cell.width, cell.height);
+    let full_bytes_per_char = fixed_bytes_per_char(dimensions.full_width, dimensions.height)?;
+    let half_bytes_per_char = fixed_bytes_per_char(dimensions.half_width, dimensions.height)?;
     let prefix = c_macro_prefix(&settings.output_name);
     let mut text = String::new();
 
     let _ = writeln!(
         text,
-        "// Auto-generated 4-bit AA fixed-cell bitmap font: {}x{} pixels",
-        cell.width, cell.height
+        "// Auto-generated 4-bit AA fixed-cell bitmap font: {}x{} full-width pixels",
+        dimensions.full_width, dimensions.height
     );
     let _ = writeln!(
         text,
@@ -93,10 +95,31 @@ fn render_fixed_header(
     let _ = writeln!(text);
     let _ = writeln!(text, "#include <stdint.h>");
     let _ = writeln!(text);
-    let _ = writeln!(text, "#define {prefix}_WIDTH {}", cell.width);
-    let _ = writeln!(text, "#define {prefix}_HEIGHT {}", cell.height);
+    let _ = writeln!(text, "#define {prefix}_WIDTH {}", dimensions.full_width);
+    let _ = writeln!(text, "#define {prefix}_HEIGHT {}", dimensions.height);
+    let _ = writeln!(
+        text,
+        "#define {prefix}_FULL_WIDTH {}",
+        dimensions.full_width
+    );
+    let _ = writeln!(
+        text,
+        "#define {prefix}_HALF_WIDTH {}",
+        dimensions.half_width
+    );
     let _ = writeln!(text, "#define {prefix}_BPP 4");
-    let _ = writeln!(text, "#define {prefix}_BYTES_PER_CHAR {bytes_per_char}");
+    let _ = writeln!(
+        text,
+        "#define {prefix}_FULL_BYTES_PER_CHAR {full_bytes_per_char}"
+    );
+    let _ = writeln!(
+        text,
+        "#define {prefix}_HALF_BYTES_PER_CHAR {half_bytes_per_char}"
+    );
+    let _ = writeln!(
+        text,
+        "#define {prefix}_BYTES_PER_CHAR {full_bytes_per_char}"
+    );
     let _ = writeln!(text, "#define {prefix}_CHAR_COUNT {}", size.glyphs.len());
     let _ = writeln!(text);
     let _ = writeln!(text, "static const char *{}_chars =", settings.output_name);
@@ -108,14 +131,33 @@ fn render_fixed_header(
     let _ = writeln!(text);
     let _ = writeln!(
         text,
+        "static const uint8_t {}_widths[{}] = {{",
+        settings.output_name,
+        size.glyphs.len()
+    );
+    for glyph in &size.glyphs {
+        let width = dimensions.width_for(&glyph.key);
+        let _ = writeln!(text, "    {width}u, // '{}'", glyph.key);
+    }
+    let _ = writeln!(text, "}};");
+    let _ = writeln!(text);
+    let _ = writeln!(
+        text,
         "static const uint8_t {}_data[{}][{}] = {{",
         settings.output_name,
         size.glyphs.len(),
-        bytes_per_char
+        full_bytes_per_char
     );
 
     for glyph in &size.glyphs {
-        let packed = fixed_cell_bitmap(size, glyph, cell.width, cell.height, bytes_per_char)?;
+        let glyph_width = dimensions.width_for(&glyph.key);
+        let packed = fixed_cell_bitmap(
+            size,
+            glyph,
+            glyph_width,
+            dimensions.height,
+            full_bytes_per_char,
+        )?;
         let _ = writeln!(text, "    {{// '{}'", glyph.key);
         text.push_str(&byte_array_literal(&packed, "     "));
         let _ = writeln!(text, "    }},");
@@ -126,6 +168,39 @@ fn render_fixed_header(
     let _ = writeln!(text, "#endif");
 
     Ok(text)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FixedCellDimensions {
+    full_width: u32,
+    half_width: u32,
+    height: u32,
+}
+
+impl FixedCellDimensions {
+    fn from_config(width: u32, height: u32) -> Self {
+        Self {
+            full_width: width - 1,
+            half_width: (width / 2) - 1,
+            height: height - 1,
+        }
+    }
+
+    fn width_for(self, key: &str) -> u32 {
+        if is_half_width_display_unit(key) {
+            self.half_width
+        } else {
+            self.full_width
+        }
+    }
+}
+
+fn is_half_width_display_unit(key: &str) -> bool {
+    let mut chars = key.chars();
+    let Some(character) = chars.next() else {
+        return false;
+    };
+    chars.next().is_none() && (character == ' ' || character.is_ascii_graphic())
 }
 
 fn fixed_bytes_per_char(width: u32, height: u32) -> Result<usize, AppError> {
@@ -168,34 +243,13 @@ fn mapping_chunks(size: &GeneratedFontSize, chunk_chars: usize) -> Vec<String> {
 fn fixed_cell_bitmap(
     size: &GeneratedFontSize,
     glyph: &Glyph,
-    cell_width: u32,
-    cell_height: u32,
-    bytes_per_char: usize,
+    target_width: u32,
+    target_height: u32,
+    row_bytes: usize,
 ) -> Result<Vec<u8>, AppError> {
-    if glyph.width > cell_width || glyph.height > cell_height {
-        return Err(AppError::FixedCellGlyphTooLarge {
-            glyph: glyph.key.clone(),
-            glyph_width: glyph.width,
-            glyph_height: glyph.height,
-            cell_width,
-            cell_height,
-        });
-    }
-
-    let cell_pixels = cell_pixel_count(cell_width, cell_height)?;
+    let cell_pixels = cell_pixel_count(target_width, target_height)?;
     let mut cell_alpha = vec![0u8; cell_pixels];
     let source_alpha = unpack_glyph_alpha(size, glyph)?;
-    let x_offset =
-        usize::try_from((cell_width - glyph.width) / 2).map_err(|_| AppError::InvalidSetting {
-            setting: "fixed_cell.width",
-            message: "fixed cell width cannot be represented on this host".to_string(),
-        })?;
-    let y_offset = usize::try_from((cell_height - glyph.height) / 2).map_err(|_| {
-        AppError::InvalidSetting {
-            setting: "fixed_cell.height",
-            message: "fixed cell height cannot be represented on this host".to_string(),
-        }
-    })?;
     let source_width = usize::try_from(glyph.width).map_err(|_| AppError::MetricOverflow {
         glyph: glyph.key.clone(),
         metric: "width",
@@ -204,29 +258,51 @@ fn fixed_cell_bitmap(
         glyph: glyph.key.clone(),
         metric: "height",
     })?;
-    let target_width = usize::try_from(cell_width).map_err(|_| AppError::InvalidSetting {
+    let target_width = usize::try_from(target_width).map_err(|_| AppError::InvalidSetting {
         setting: "fixed_cell.width",
         message: "fixed cell width cannot be represented on this host".to_string(),
     })?;
+    let target_height = usize::try_from(target_height).map_err(|_| AppError::InvalidSetting {
+        setting: "fixed_cell.height",
+        message: "fixed cell height cannot be represented on this host".to_string(),
+    })?;
+    let copy_width = source_width.min(target_width);
+    let copy_height = source_height.min(target_height);
+    let skipped_source_columns = source_width.saturating_sub(target_width) / 2;
+    let skipped_source_rows = source_height.saturating_sub(target_height) / 2;
+    let target_column_offset = target_width.saturating_sub(source_width) / 2;
+    let target_row_offset = target_height.saturating_sub(source_height) / 2;
 
-    for row in 0..source_height {
-        for column in 0..source_width {
-            let Some(source_index) = row
+    for row in 0..copy_height {
+        for column in 0..copy_width {
+            let Some(source_row) = skipped_source_rows.checked_add(row) else {
+                return Err(AppError::InvalidSetting {
+                    setting: "fixed_cell.height",
+                    message: "fixed cell source row overflow".to_string(),
+                });
+            };
+            let Some(source_column) = skipped_source_columns.checked_add(column) else {
+                return Err(AppError::InvalidSetting {
+                    setting: "fixed_cell.width",
+                    message: "fixed cell source column overflow".to_string(),
+                });
+            };
+            let Some(source_index) = source_row
                 .checked_mul(source_width)
-                .and_then(|base| base.checked_add(column))
+                .and_then(|base| base.checked_add(source_column))
             else {
                 return Err(AppError::InvalidSetting {
                     setting: "fixed_cell.width",
                     message: "fixed cell source index overflow".to_string(),
                 });
             };
-            let Some(target_row) = y_offset.checked_add(row) else {
+            let Some(target_row) = target_row_offset.checked_add(row) else {
                 return Err(AppError::InvalidSetting {
                     setting: "fixed_cell.height",
                     message: "fixed cell target row overflow".to_string(),
                 });
             };
-            let Some(target_column) = x_offset.checked_add(column) else {
+            let Some(target_column) = target_column_offset.checked_add(column) else {
                 return Err(AppError::InvalidSetting {
                     setting: "fixed_cell.width",
                     message: "fixed cell target column overflow".to_string(),
@@ -250,14 +326,15 @@ fn fixed_cell_bitmap(
         }
     }
 
-    let packed = pack_4bit_alpha(&cell_alpha);
-    if packed.len() == bytes_per_char {
-        Ok(packed)
-    } else {
+    let mut packed = pack_4bit_alpha(&cell_alpha);
+    if packed.len() > row_bytes {
         Err(AppError::InvalidSetting {
             setting: "fixed_cell.width",
-            message: "fixed cell packed byte count mismatch".to_string(),
+            message: "fixed cell packed byte count exceeds row size".to_string(),
         })
+    } else {
+        packed.resize(row_bytes, 0);
+        Ok(packed)
     }
 }
 
@@ -424,6 +501,30 @@ fn size_suffix(pixel_size: u32) -> String {
 mod tests {
     use super::*;
     use crate::model::Glyph;
+
+    #[test]
+    fn derives_tight_fixed_cell_dimensions() {
+        let dimensions = FixedCellDimensions::from_config(26, 26);
+
+        assert_eq!(
+            dimensions,
+            FixedCellDimensions {
+                full_width: 25,
+                half_width: 12,
+                height: 25,
+            }
+        );
+    }
+
+    #[test]
+    fn classifies_ascii_display_units_as_half_width() {
+        assert!(is_half_width_display_unit("A"));
+        assert!(is_half_width_display_unit("7"));
+        assert!(is_half_width_display_unit("!"));
+        assert!(is_half_width_display_unit(" "));
+        assert!(!is_half_width_display_unit("あ"));
+        assert!(!is_half_width_display_unit("AB"));
+    }
 
     #[test]
     fn renders_c_source_deterministically() -> Result<(), Box<dyn std::error::Error>> {

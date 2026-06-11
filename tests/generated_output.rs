@@ -117,11 +117,27 @@ fn writes_deterministic_fixed_c_output_file() -> Result<(), Box<dyn std::error::
     if paths.len() != 1 {
         return Err(std::io::Error::other(format!("unexpected paths: {paths:?}")).into());
     }
-    ensure_contains(&root.join("sample_font.h"), "#define SAMPLE_FONT_WIDTH 4")?;
-    ensure_contains(&root.join("sample_font.h"), "#define SAMPLE_FONT_HEIGHT 4")?;
+    ensure_contains(&root.join("sample_font.h"), "#define SAMPLE_FONT_WIDTH 3")?;
+    ensure_contains(&root.join("sample_font.h"), "#define SAMPLE_FONT_HEIGHT 3")?;
     ensure_contains(
         &root.join("sample_font.h"),
-        "#define SAMPLE_FONT_BYTES_PER_CHAR 8",
+        "#define SAMPLE_FONT_FULL_WIDTH 3",
+    )?;
+    ensure_contains(
+        &root.join("sample_font.h"),
+        "#define SAMPLE_FONT_HALF_WIDTH 1",
+    )?;
+    ensure_contains(
+        &root.join("sample_font.h"),
+        "#define SAMPLE_FONT_FULL_BYTES_PER_CHAR 5",
+    )?;
+    ensure_contains(
+        &root.join("sample_font.h"),
+        "#define SAMPLE_FONT_HALF_BYTES_PER_CHAR 2",
+    )?;
+    ensure_contains(
+        &root.join("sample_font.h"),
+        "#define SAMPLE_FONT_BYTES_PER_CHAR 5",
     )?;
     ensure_contains(
         &root.join("sample_font.h"),
@@ -130,7 +146,12 @@ fn writes_deterministic_fixed_c_output_file() -> Result<(), Box<dyn std::error::
     ensure_contains(&root.join("sample_font.h"), "\"A\";")?;
     ensure_contains(
         &root.join("sample_font.h"),
-        "static const uint8_t sample_font_data[1][8]",
+        "static const uint8_t sample_font_widths[1]",
+    )?;
+    ensure_contains(&root.join("sample_font.h"), "    1u, // 'A'")?;
+    ensure_contains(
+        &root.join("sample_font.h"),
+        "static const uint8_t sample_font_data[1][5]",
     )?;
     Ok(())
 }

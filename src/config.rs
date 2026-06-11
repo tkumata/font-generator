@@ -435,16 +435,16 @@ fn validate_sizes(sizes: &[u32]) -> Result<(), AppError> {
 }
 
 fn validate_fixed_cell(width: u32, height: u32) -> Result<(), AppError> {
-    if width == 0 {
+    if width < 4 {
         return Err(AppError::InvalidSetting {
             setting: "fixed_cell.width",
-            message: "width must be a positive pixel value".to_string(),
+            message: "width must be at least 4 pixels for fixed-cell output".to_string(),
         });
     }
-    if height == 0 {
+    if height < 2 {
         return Err(AppError::InvalidSetting {
             setting: "fixed_cell.height",
-            message: "height must be a positive pixel value".to_string(),
+            message: "height must be at least 2 pixels for fixed-cell output".to_string(),
         });
     }
     Ok(())

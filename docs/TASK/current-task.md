@@ -2,92 +2,56 @@
 
 ## Phase
 
-Phase 8: Rendererless C Fixed Bitmap Output
+Phase 10: Tight C Fixed Glyph Cells
 
 ## Scope
 
-Add a C output path for microcontroller firmware that does not have a font renderer. The output must be fixed-cell bitmap data that firmware can draw with direct index lookup and a small nibble-unpacking loop.
+Change `c-fixed` output so generated glyph records use one-pixel-smaller effective dimensions and ASCII display units use half-width records. Keep generated C data directly usable by firmware with stable index-based lookup.
 
 ## Completed
 
-- Archived the Phase 7 task note as `docs/TASK/202606042113.md`.
-- Started Phase 8 documentation after user approval.
-- Documented the key requirement: microcontroller firmware usually has no font renderer.
-- Added the Phase 8 plan entry for rendererless C fixed bitmap output.
-- Updated requirements to make C fixed bitmap output the preferred microcontroller format.
-- Updated specifications for fixed-cell configuration, generated constants, bitmap shape, and runtime contract.
-- Updated design docs with the C fixed output architecture, placement rule, and test strategy.
-- Added ADR `docs/ADR/202606042113.md`.
-- Implemented `output.format = "c-fixed"` config parsing and `[fixed_cell]` validation.
-- Implemented fixed-cell C header output with width, height, BPP, bytes-per-character, character count, mapping, and fixed bitmap records.
-- Kept compatibility C metrics output available when `output.format` is omitted or set to `c-metrics`.
-- Updated the sample config and C example for fixed-cell output.
-- Updated README, CLI, configuration, integration, limitations, and specification docs for the implemented behavior.
-- Added tests for fixed-cell config validation and deterministic fixed C output.
-- Verified generated fixed-cell C output with the C minimal usage example.
+- Archived the Phase 9 task note as `docs/TASK/202606081648.md`.
+- Added Phase 10 plan, requirements, specification, design, and ADR documentation.
+- Implemented effective fixed-cell dimension helpers.
+- Implemented ASCII half-width classification.
+- Updated `c-fixed` C header rendering to emit full-width and half-width constants, per-character widths, and fixed-stride bitmap records.
+- Updated tests for Phase 10 sizing and output shape.
+- Updated README usage text to explain per-character widths.
+- Ran `make check`.
+- Ran `make build`.
 
 ## Remaining Work
 
-- Phase 8 implementation is complete.
+- Wait for user review of the Phase 10 implementation.
 
 ## Commands Run
 
-- `rg -n "font renderer|renderer|C output|fixed|bitmap|glyph|Phase|metrics|advance|bearing|TouchKBD|microcontroller|マイコン|レンダ" docs README.md src examples`
-- `sed -n '1,240p' docs/PLAN.md`
-- `sed -n '1,240p' docs/REQUIREMENTS.md`
-- `sed -n '1,260p' docs/SPECIFICATIONS.md`
-- `sed -n '1,260p' docs/DESIGN.md`
-- `sed -n '1,260p' docs/TASK/current-task.md`
 - `date +%Y%m%d%H%M`
-- `sed -n '1,220p' docs/CONFIGURATION.md`
-- `sed -n '1,180p' docs/INTEGRATION.md`
-- `ls docs/ADR docs/TASK`
-- `rg -n "\\|" docs README.md`
-- `git diff -- docs/PLAN.md docs/REQUIREMENTS.md docs/SPECIFICATIONS.md docs/DESIGN.md docs/ADR/202606042113.md docs/TASK/current-task.md README.md docs/CONFIGURATION.md docs/INTEGRATION.md docs/LIMITATIONS.md`
-- `make check`
-- `make build`
-- `sed -n '1,220p' /Users/kumata/Developer/andrej-karpathy-skills/skills/karpathy-guidelines/SKILL.md`
-- `rg -n "font-generator|font_hiragana|fixed-cell|fixed bitmap|NotoSansJP|TouchKBD" /Users/kumata/.codex/memories/MEMORY.md`
-- `rg --files src tests examples docs | sort`
-- `git diff -- README.md docs src tests examples Cargo.toml`
-- `sed -n '220,560p' src/config.rs`
-- `sed -n '1,140p' src/lib.rs`
-- `sed -n '1,160p' src/error.rs`
-- `sed -n '1,220p' src/output/rust.rs`
-- `sed -n '1,220p' Cargo.toml`
-- `sed -n '1,220p' docs/CLI.md`
-- `rg -n "GenerationSettings \\{|output_format|fixed_cell|format:" src tests`
+- `sed -n '1,260p' docs/PLAN.md`
+- `sed -n '1,340p' docs/REQUIREMENTS.md`
+- `sed -n '1,360p' docs/SPECIFICATIONS.md`
+- `sed -n '1,360p' docs/DESIGN.md`
+- `sed -n '1,260p' README.md`
+- `sed -n '1,140p' docs/TASK/current-task.md`
+- `mv docs/TASK/current-task.md docs/TASK/202606081648.md`
 - `cargo fmt --check`
 - `cargo fmt`
-- `cargo test --all-features`
 - `make check`
-- `mkdir -p /private/tmp/font-generator-phase8-verify`
-- `printf ... > /private/tmp/font-generator-phase8-verify/chars.txt`
-- `printf ... > /private/tmp/font-generator-phase8-verify/fontgen.toml`
-- `cargo run -- --config /private/tmp/font-generator-phase8-verify/fontgen.toml`
-- `cc -fsyntax-only -I /private/tmp/font-generator-phase8-verify examples/c/minimal_usage.c`
-- `rg -n "planned|until Phase 8|Phase 8 is planned|not been run|Wait for user approval|implemented MVP|When language = c" README.md docs examples`
 - `make check`
 - `make build`
-- `sed -n '1,240p' .agent-hooks/state/logs/check.log`
-- `sed -n '1,220p' .agent-hooks/state/logs/build.log`
-- `git status --short`
-- `rg -n "\\|" docs README.md`
 - `sed -n '1,220p' .agent-hooks/state/logs/check.log`
 - `sed -n '1,220p' .agent-hooks/state/logs/build.log`
-- `make check`
-- `make build`
+- `git status --short`
+- `rg -n '^\\|.*\\|$' README.md docs --glob '*.md'`
 
 ## Verification
 
 - Markdown table usage was checked; no Markdown table was added.
-- `make check` passed.
+- Existing `.agent-hooks/state/logs/check.log` and `build.log` were reviewed. They contain older successful runs.
+- The first Phase 10 `make check` run failed on clippy `similar_names` in `src/output/c.rs`; the variable names were corrected.
+- The final `make check` passed with 25 unit tests and 3 integration tests.
 - `make build` passed.
-- `cargo test --all-features` passed.
-- Fixed-cell generation with `/System/Library/Fonts/SFNS.ttf`, `A`, size 16, and 20x20 cell wrote one `sample_font.h`.
-- `cc -fsyntax-only -I /private/tmp/font-generator-phase8-verify examples/c/minimal_usage.c` passed against the generated fixed-cell header.
-- Existing `.agent-hooks/state/logs/check.log` and `build.log` were reviewed before stopping; they still contain an older logged run, while the direct Phase 8 command output above passed.
 
 ## Next Step
 
-Stop for user review.
+Stop for user review after verification.
