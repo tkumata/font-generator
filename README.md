@@ -262,6 +262,10 @@ Bitmap pixels are row-major. Each byte stores two 4-bit alpha values: the first 
 
 The current generator accepts only single Unicode scalar display units. Multi-scalar grapheme clusters such as variation-selector emoji are not present in `app_font_chars` unless a future rasterizer adds support.
 
+Even though the characters in the photo below are rendered dot by dot on the LCD, they are displayed quite cleanly thanks to a pseudo anti-aliasing effect.
+
+![example](./docs/assets/IMG_0567.jpeg)
+
 ## Examples
 
 Sample inputs:
