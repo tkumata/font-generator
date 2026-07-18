@@ -2,3 +2,6 @@
 /target
 .agent-hooks/state
 /generated
+
+# Added by harness installer
+.agent-hooks/state/
