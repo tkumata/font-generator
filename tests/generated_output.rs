@@ -1,4 +1,5 @@
 use std::fs;
+use std::mem::DropGuard;
 use std::path::{Path, PathBuf};
 
 use font_generator::config::{
@@ -65,13 +66,18 @@ fn fixed_settings(output_directory: PathBuf) -> GenerationSettings {
     }
 }
 
-fn temp_dir(test_name: &str) -> Result<PathBuf, std::io::Error> {
+fn temp_dir(test_name: &str) -> Result<DropGuard<PathBuf, impl FnOnce(PathBuf)>, std::io::Error> {
     let root = std::env::temp_dir().join(format!(
         "font-generator-generated-output-{test_name}-{}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&root);
-    fs::create_dir_all(&root)?;
+    let root = DropGuard::new(root, |root| {
+        if let Err(error) = fs::remove_dir_all(&root) {
+            eprintln!("failed to remove test directory {root:?}: {error}");
+        }
+    });
+    fs::create_dir_all(&*root)?;
     Ok(root)
 }
 
@@ -86,6 +92,46 @@ fn ensure_contains(path: &Path, needle: &str) -> Result<(), Box<dyn std::error::
         ))
         .into())
     }
+}
+
+#[test]
+fn removes_temporary_directory_after_success_and_error() -> Result<(), Box<dyn std::error::Error>> {
+    for fail in [false, true] {
+        let root = temp_dir(if fail {
+            "cleanup-error"
+        } else {
+            "cleanup-success"
+        })?;
+        let directory = root.to_path_buf();
+        let result = (move || -> Result<(), std::io::Error> {
+            fs::write(root.join("probe.txt"), "probe")?;
+            if fail {
+                return Err(std::io::Error::other("requested failure"));
+            }
+            Ok(())
+        })();
+        let expected = if fail {
+            Err("requested failure".to_string())
+        } else {
+            Ok(())
+        };
+
+        let actual = result.map_err(|error| error.to_string());
+        if actual != expected {
+            return Err(std::io::Error::other(format!(
+                "unexpected result: expected {expected:?}, got {actual:?}"
+            ))
+            .into());
+        }
+        if directory.exists() {
+            return Err(std::io::Error::other(format!(
+                "temporary directory was not removed: {}",
+                directory.display()
+            ))
+            .into());
+        }
+    }
+    Ok(())
 }
 
 #[test]
