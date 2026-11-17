@@ -132,23 +132,25 @@ fn format_display_unit(unit: &str) -> String {
 mod tests {
     use std::fmt::Debug;
     use std::fs;
+    use std::mem::DropGuard;
 
     use super::*;
 
-    fn temp_file(
+    fn temp_dir(
         test_name: &str,
-        file_name: &str,
-        content: &str,
-    ) -> Result<PathBuf, std::io::Error> {
+    ) -> Result<DropGuard<PathBuf, impl FnOnce(PathBuf)>, std::io::Error> {
         let root = std::env::temp_dir().join(format!(
             "font-generator-chars-{test_name}-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root)?;
-        let path = root.join(file_name);
-        fs::write(&path, content)?;
-        Ok(path)
+        let root = DropGuard::new(root, |root| {
+            if let Err(error) = fs::remove_dir_all(&root) {
+                eprintln!("failed to remove test directory {root:?}: {error}");
+            }
+        });
+        fs::create_dir_all(&*root)?;
+        Ok(root)
     }
 
     fn collect_text(content: &str, preserve_space: bool) -> Result<Vec<String>, AppError> {
@@ -230,7 +232,9 @@ mod tests {
 
     #[test]
     fn reads_multiple_files_in_order() -> Result<(), Box<dyn std::error::Error>> {
-        let first = temp_file("multiple", "first.txt", "abc")?;
+        let root = temp_dir("multiple")?;
+        let first = root.join("first.txt");
+        fs::write(&first, "abc")?;
         let second = first.with_file_name("second.txt");
         fs::write(&second, "cde")?;
 

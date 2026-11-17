@@ -507,19 +507,28 @@ fn validate_symbol_name(name: &str) -> Result<(), AppError> {
 mod tests {
     use std::fmt::Debug;
     use std::fs;
+    use std::mem::DropGuard;
     use std::path::{Path, PathBuf};
 
     use super::*;
 
-    fn temp_project(test_name: &str) -> Result<PathBuf, std::io::Error> {
+    fn temp_project(
+        test_name: &str,
+    ) -> Result<DropGuard<PathBuf, impl FnOnce(PathBuf)>, std::io::Error> {
         let root =
             std::env::temp_dir().join(format!("font-generator-{test_name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
+        let mut root = DropGuard::new(root, |root| {
+            if let Err(error) = fs::remove_dir_all(&root) {
+                eprintln!("failed to remove test directory {root:?}: {error}");
+            }
+        });
         fs::create_dir_all(root.join("fonts"))?;
         fs::create_dir_all(root.join("chars"))?;
         fs::write(root.join("fonts/font.ttf"), b"font")?;
         fs::write(root.join("chars/main.txt"), "abc")?;
-        root.canonicalize()
+        *root = root.canonicalize()?;
+        Ok(root)
     }
 
     fn write_config(root: &Path, body: &str) -> Result<PathBuf, std::io::Error> {
@@ -626,7 +635,7 @@ mod tests {
             &settings.output_name,
             &"weather_font".to_string(),
         )?;
-        ensure_eq("output_directory", &settings.output_directory, &root)?;
+        ensure_eq("output_directory", &settings.output_directory, &*root)?;
         ensure_eq("sizes", &settings.sizes, &vec![16, 24])?;
         ensure_eq("alpha_bits", &settings.alpha_bits, &4)?;
         ensure_eq("fixed_cell", &settings.fixed_cell, &None)?;
